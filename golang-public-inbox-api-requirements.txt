@@ -1,0 +1,470 @@
+PROMPT UNTUK CODEX
+
+Saya ingin membuat script/app Golang yang berjalan di server yang sama dengan backend temporary email ini.
+Script Golang tidak perlu hit HTTP API backend, tidak perlu WebSocket, dan tidak perlu endpoint admin.
+
+Tolong buat script Golang yang membaca list pesan inbox langsung dari storage internal backend:
+
+1. Baca inbox summary dari Redis key `inbox:{email}`.
+2. Decode setiap item Redis list sebagai JSON.
+3. Ambil field ringkasan pesan: id, from, subject, timestamp, is_otp, otp.
+4. Jika field is_otp/otp belum ada pada summary lama, baca detail message dari file JSON memakai Redis key `message_file:{id}` sebagai index path.
+5. Kalau path index Redis tidak ada, script boleh scan folder storage email untuk mencari `{id}.json`.
+6. Jangan memakai HTTP endpoint `/api/v1/...`.
+7. Jangan memakai WebSocket.
+8. Jangan memakai X-Admin-Token.
+9. Simpan message id yang sudah diproses agar pesan tidak diproses berulang.
+
+
+REQUIREMENTS SCRIPT GOLANG PEMBACA INBOX INTERNAL
+
+1. Tujuan
+
+Script Golang dibuat untuk membaca pesan inbox temporary email dari server yang sama dengan backend.
+Script ini bukan client HTTP public API.
+
+Script harus membaca langsung dari:
+
+- Redis
+- file JSON detail email di storage lokal
+
+Script tidak perlu memanggil HTTP API backend, WebSocket, atau endpoint admin.
+
+
+2. Environment Yang Harus Dibaca
+
+Script Golang harus membaca konfigurasi dari environment variable yang sama dengan backend.
+Jika script dijalankan dari root project yang sama, script boleh load file `.env` lebih dulu.
+Jangan hardcode konfigurasi Redis di source code; ambil dari env.
+
+Env Redis/storage yang dipakai backend:
+
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+REDIS_PASSWORD=d0535500cb173f97
+REDIS_URL=redis://:d0535500cb173f97@127.0.0.1:6379
+EMAIL_STORAGE_DIR=./emails
+EMAIL_TTL_SECONDS=86400
+INBOX_MAX_MESSAGES=20
+
+Default dari backend `src/utils/config.js` jika env kosong:
+
+- REDIS_HOST: 127.0.0.1
+- REDIS_PORT: 6379
+- REDIS_PASSWORD: d0535500cb173f97
+- REDIS_URL: redis://127.0.0.1:6379
+- EMAIL_STORAGE_DIR: ./emails
+- EMAIL_TTL_SECONDS: 86400
+- INBOX_MAX_MESSAGES: 20
+
+Prioritas konfigurasi Redis:
+
+1. Jika `REDIS_URL` ada, parse host, port, username/password, dan DB dari URL tersebut.
+2. Jika `REDIS_URL` tidak ada, buat koneksi dari `REDIS_HOST`, `REDIS_PORT`, dan `REDIS_PASSWORD`.
+3. Jika `REDIS_URL` ada tapi tidak mengandung password, tetap gunakan `REDIS_PASSWORD` sebagai password Redis.
+4. Jika `REDIS_PASSWORD` kosong, koneksi Redis tanpa password.
+
+Catatan path:
+
+- `EMAIL_STORAGE_DIR` harus di-resolve relatif ke working directory script jika path relatif.
+- Jika script Golang dijalankan dari root repo yang sama dengan backend, `./emails` sudah benar.
+- Jika script Golang dijalankan sebagai service dari directory lain, set `EMAIL_STORAGE_DIR` ke absolute path, misalnya `/app/emails`.
+- Jika script berjalan di container berbeda, mount volume email backend ke path yang sama dengan `EMAIL_STORAGE_DIR`.
+
+Contoh konfigurasi lokal sesuai `.env.example`:
+
+REDIS_URL=redis://:d0535500cb173f97@127.0.0.1:6379
+EMAIL_STORAGE_DIR=./emails
+INBOX_MAX_MESSAGES=20
+
+Contoh konfigurasi container/compose:
+
+REDIS_URL=redis://:password-kuat@redis:6379
+EMAIL_STORAGE_DIR=/app/emails
+INBOX_MAX_MESSAGES=20
+
+Parsing `.env` di Golang:
+
+- Boleh pakai package `github.com/joho/godotenv`.
+- Load `.env` saat startup jika file tersedia.
+- Env dari process harus tetap menang dari `.env` jika keduanya ada.
+
+
+3. Redis Key Yang Dipakai Backend
+
+Backend menyimpan inbox summary di Redis list:
+
+inbox:{email}
+
+Contoh:
+
+inbox:abc123@pusat.email
+
+Email wajib dinormalisasi:
+
+- trim spasi
+- lowercase
+
+Backend menyimpan index file detail message di Redis string:
+
+message_file:{message_id}
+
+Contoh:
+
+message_file:d2fb0b7c-7a8d-4fb0-bc37-4e0f95f67d3b
+
+Value key ini adalah path file JSON detail email.
+
+
+4. Cara Membaca List Inbox Dari Redis
+
+Untuk membaca inbox:
+
+LRANGE inbox:{email} 0 {INBOX_MAX_MESSAGES-1}
+
+Default range:
+
+LRANGE inbox:{email} 0 19
+
+Setiap item list adalah JSON string dengan struktur:
+
+{
+  "id": "d2fb0b7c-7a8d-4fb0-bc37-4e0f95f67d3b",
+  "from": "Service <no-reply@example.com>",
+  "subject": "Your verification code",
+  "timestamp": 1710000000000,
+  "is_otp": true,
+  "otp": "123456"
+}
+
+Field:
+
+- id: UUID message.
+- from: sender email/text.
+- subject: subject email.
+- timestamp: epoch milliseconds.
+- is_otp: boolean.
+- otp: string atau null.
+
+Urutan:
+
+- Backend menyimpan pesan terbaru di depan list memakai LPUSH.
+- Jadi hasil LRANGE index 0 adalah pesan terbaru.
+
+
+5. Backfill OTP Untuk Data Lama
+
+Ada kemungkinan item inbox lama belum punya field:
+
+- is_otp
+- otp
+
+Jika field tersebut tidak ada, script Golang harus baca detail message dari file JSON.
+
+Langkah:
+
+1. Ambil message id dari summary.
+2. GET Redis key `message_file:{id}`.
+3. Jika value ada, baca file JSON dari path tersebut.
+4. Decode file JSON detail message.
+5. Ambil `is_otp` dan `otp` dari detail.
+6. Gabungkan ke summary yang dikembalikan script.
+
+Jika `message_file:{id}` tidak ada:
+
+- Scan folder EMAIL_STORAGE_DIR secara rekursif.
+- Cari file dengan nama `{id}.json`.
+- Kalau ditemukan, baca file itu.
+- Optional: tulis ulang Redis key `message_file:{id}` dengan TTL kalau script ingin bantu index kembali.
+
+
+6. Struktur File Detail Message
+
+Detail message disimpan sebagai JSON file.
+
+Contoh isi file:
+
+{
+  "id": "d2fb0b7c-7a8d-4fb0-bc37-4e0f95f67d3b",
+  "from": "Service <no-reply@example.com>",
+  "to": ["abc123@pusat.email"],
+  "subject": "Your verification code",
+  "text": "Use code 123456 to login.",
+  "html": "",
+  "raw": "...",
+  "created_at": 1710000000000,
+  "is_otp": true,
+  "otp": "123456"
+}
+
+Field detail:
+
+- id
+- from
+- to
+- subject
+- text
+- html
+- raw
+- created_at
+- is_otp
+- otp
+
+Untuk kebutuhan baca OTP cepat, script cukup pakai summary inbox.
+Detail file hanya fallback atau saat butuh body email.
+
+
+7. Struktur Folder Email Storage
+
+Backend menyimpan file detail email di:
+
+EMAIL_STORAGE_DIR/YYYY-MM-DD/aa/bb/{uuid}.json
+
+Contoh:
+
+emails/2026-05-28/d2/fb/d2fb0b7c-7a8d-4fb0-bc37-4e0f95f67d3b.json
+
+Cara tercepat:
+
+- Pakai Redis key `message_file:{id}`.
+
+Cara fallback:
+
+- Walk directory EMAIL_STORAGE_DIR.
+- Cari basename `{id}.json`.
+
+Catatan:
+
+- File detail bisa expired atau dihapus cleanup worker.
+- Jika file tidak ada, script tetap boleh menampilkan summary inbox yang tersedia.
+
+
+8. Struct Golang Yang Disarankan
+
+type InboxMessage struct {
+    ID        string  `json:"id"`
+    From      string  `json:"from"`
+    Subject   string  `json:"subject"`
+    Timestamp int64   `json:"timestamp"`
+    IsOTP     bool    `json:"is_otp"`
+    OTP       *string `json:"otp"`
+}
+
+type MessageDetail struct {
+    ID        string   `json:"id"`
+    From      string   `json:"from"`
+    To        []string `json:"to"`
+    Subject   string   `json:"subject"`
+    Text      string   `json:"text"`
+    HTML      string   `json:"html"`
+    Raw       string   `json:"raw"`
+    CreatedAt int64    `json:"created_at"`
+    IsOTP     bool     `json:"is_otp"`
+    OTP       *string  `json:"otp"`
+}
+
+type InboxResult struct {
+    Email    string         `json:"email"`
+    Messages []InboxMessage `json:"messages"`
+}
+
+
+9. Dependency Golang
+
+Gunakan Redis client Golang.
+
+Rekomendasi:
+
+github.com/redis/go-redis/v9
+
+Opsional untuk load file `.env`:
+
+github.com/joho/godotenv
+
+Script juga perlu package standard:
+
+- context
+- encoding/json
+- errors
+- fmt
+- net/url
+- os
+- path/filepath
+- strings
+- time
+
+
+10. Fungsi Yang Harus Dibuat
+
+Minimal fungsi:
+
+normalizeEmail(email string) string
+
+- trim
+- lowercase
+
+inboxKey(email string) string
+
+- return "inbox:" + normalizeEmail(email)
+
+messageFileKey(id string) string
+
+- return "message_file:" + id
+
+ReadInbox(ctx, redisClient, email string, maxMessages int) (InboxResult, error)
+
+- LRANGE inbox key.
+- Decode JSON per row.
+- Jika is_otp/otp tidak ada, backfill dari detail file.
+- Return result.
+
+ReadMessageDetail(ctx, redisClient, id string, storageDir string) (*MessageDetail, error)
+
+- Cek Redis key message_file:{id}.
+- Jika ada, baca file.
+- Jika tidak ada, scan storageDir.
+- Decode JSON detail.
+
+FindMessageFile(storageDir string, id string) (string, error)
+
+- filepath.WalkDir.
+- Cari file `{id}.json`.
+
+
+11. Cara Mendeteksi Field OTP Tidak Ada
+
+Dalam Go, kalau langsung decode ke bool biasa, field yang tidak ada akan jadi false.
+Itu tidak cukup untuk membedakan:
+
+- is_otp memang false
+- is_otp belum ada di JSON lama
+
+Solusi:
+
+Gunakan raw struct dengan pointer:
+
+type rawInboxMessage struct {
+    ID        string  `json:"id"`
+    From      string  `json:"from"`
+    Subject   string  `json:"subject"`
+    Timestamp int64   `json:"timestamp"`
+    IsOTP     *bool   `json:"is_otp"`
+    OTP       *string `json:"otp"`
+}
+
+Jika raw.IsOTP == nil, berarti field belum ada dan perlu backfill dari detail file.
+
+Mapping ke InboxMessage:
+
+- Jika raw.IsOTP != nil, pakai nilai tersebut.
+- Jika raw.IsOTP == nil, baca detail file.
+- OTP boleh nil jika bukan OTP.
+
+
+12. Polling Internal Tanpa WebSocket
+
+Script tidak perlu WebSocket.
+Gunakan polling Redis.
+
+Recommended interval:
+
+- 1-2 detik untuk OTP cepat.
+- 3-5 detik untuk mode ringan.
+
+Flow:
+
+1. Terima input email dari CLI/env/config.
+2. Normalize email.
+3. Buat map processed IDs.
+4. Loop:
+   - ReadInbox(email).
+   - Iterate messages.
+   - Jika id belum pernah diproses:
+     - print message.
+     - kalau is_otp=true dan otp != nil, print OTP.
+     - tandai id sebagai processed.
+   - Sleep interval.
+
+Jangan pakai index array untuk mendeteksi pesan baru.
+Gunakan message id.
+
+
+13. State Processed Message
+
+Minimal:
+
+processed := map[string]bool{}
+
+Lebih baik:
+
+- Simpan processed ids ke file JSON lokal.
+- Load saat startup.
+- Save saat ada message baru.
+
+Tujuannya agar script restart tidak memproses ulang pesan lama.
+
+
+14. Output Yang Diinginkan
+
+Saat ada pesan baru:
+
+New message:
+- id: d2fb0b7c-7a8d-4fb0-bc37-4e0f95f67d3b
+- from: Service <no-reply@example.com>
+- subject: Your verification code
+- timestamp: 1710000000000
+- is_otp: true
+- otp: 123456
+
+Jika bukan OTP:
+
+New message:
+- id: ...
+- from: ...
+- subject: ...
+- timestamp: ...
+- is_otp: false
+- otp: null
+
+
+15. Yang Tidak Perlu Dibuat
+
+- Tidak perlu HTTP request ke API backend.
+- Tidak perlu WebSocket.
+- Tidak perlu SMTP receiver.
+- Tidak perlu Haraka.
+- Tidak perlu delete message.
+- Tidak perlu delete inbox.
+- Tidak perlu admin token.
+- Tidak perlu endpoint public.
+
+
+16. Acceptance Criteria
+
+Implementasi dianggap benar jika:
+
+- Bisa connect ke Redis backend.
+- Bisa baca Redis key inbox:{email}.
+- Bisa decode JSON summary.
+- Bisa menampilkan list pesan terbaru.
+- Bisa membaca is_otp dan otp langsung dari summary.
+- Bisa fallback baca detail file jika summary lama belum punya field OTP.
+- Bisa membaca detail file lewat Redis key message_file:{id}.
+- Bisa fallback scan EMAIL_STORAGE_DIR jika Redis index file tidak ada.
+- Tidak memakai HTTP endpoint.
+- Tidak memakai WebSocket.
+- Tidak memproses pesan yang sama berkali-kali.
+
+
+17. Catatan Operasional
+
+Script harus dijalankan di server/container yang punya akses ke:
+
+- Redis yang sama dengan backend.
+- Folder EMAIL_STORAGE_DIR yang sama dengan backend.
+
+Jika script berjalan di container berbeda, mount volume email storage yang sama.
+
+Jika Redis memakai password, pastikan env REDIS_URL atau REDIS_PASSWORD benar.
+
+Jika backend memakai TTL 1 hari, inbox dan file detail bisa hilang setelah TTL habis.
