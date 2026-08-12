@@ -6,7 +6,13 @@ Dokumen ini merangkum semua fitur yang sudah tersedia di backend `tmail-be` dan 
 
 Backend ini adalah temporary email inbound-only. Sistem menerima SMTP lewat Haraka, memvalidasi domain penerima, menyimpan raw email ke spool lokal, memproses email lewat Redis Stream worker, menyimpan inbox metadata di Redis, menyimpan detail email ke file storage, mendeteksi OTP, dan mengirim update realtime lewat WebSocket.
 
-Base API:
+Base API production:
+
+```txt
+https://prod.pusat.email/api/v1
+```
+
+Base path lokal:
 
 ```txt
 /api/v1
@@ -180,8 +186,8 @@ Response:
 
 ```json
 {
-  "email": "abc123@thvuinin.my.id",
-  "domain": "thvuinin.my.id"
+  "email": "abc123@pusat.email",
+  "domain": "pusat.email"
 }
 ```
 
@@ -195,14 +201,14 @@ Frontend behavior:
 ### Read Inbox
 
 ```http
-GET /api/v1/inbox?email=abc123@thvuinin.my.id
+GET /api/v1/inbox?email=abc123@pusat.email
 ```
 
 Response:
 
 ```json
 {
-  "email": "abc123@thvuinin.my.id",
+  "email": "abc123@pusat.email",
   "messages": [
     {
       "id": "d2fb0b7c-7a8d-4fb0-bc37-4e0f95f67d3b",
@@ -236,7 +242,7 @@ Response:
 {
   "id": "d2fb0b7c-7a8d-4fb0-bc37-4e0f95f67d3b",
   "from": "Service <no-reply@example.com>",
-  "to": ["abc123@thvuinin.my.id"],
+  "to": ["abc123@pusat.email"],
   "subject": "Your verification code",
   "text": "Use code 123456 to login.",
   "html": "",
@@ -266,7 +272,7 @@ Response:
 {
   "domains": [
     {
-      "domain": "thvuinin.my.id",
+      "domain": "pusat.email",
       "visibility": "public",
       "created_at": 0,
       "updated_at": 0,
@@ -294,7 +300,7 @@ Response:
 {
   "domains": [
     {
-      "domain": "thvuinin.my.id",
+      "domain": "pusat.email",
       "last_seen_at": 1779811148095,
       "total_messages": 8,
       "mx_valid": true,
@@ -371,9 +377,9 @@ Response:
   "built_in": false,
   "mx_valid": true,
   "mx_records": [
-    { "exchange": "mx.thvuinin.my.id", "priority": 10 }
+    { "exchange": "mail.pusat.email", "priority": 10 }
   ],
-  "required_mx": "mx.thvuinin.my.id",
+  "required_mx": "mail.pusat.email",
   "active_reason": "mx_points_to_required_host",
   "created_at": null,
   "updated_at": null
@@ -419,14 +425,14 @@ X-Admin-Token: change-me-admin-token
 ### Delete Inbox
 
 ```http
-DELETE /api/v1/inbox?email=abc123@thvuinin.my.id
+DELETE /api/v1/inbox?email=abc123@pusat.email
 ```
 
 Response:
 
 ```json
 {
-  "email": "abc123@thvuinin.my.id",
+  "email": "abc123@pusat.email",
   "messages_deleted": 2,
   "message_ids": [
     "d2fb0b7c-7a8d-4fb0-bc37-4e0f95f67d3b"
@@ -453,7 +459,7 @@ Response:
   "deleted": true,
   "inbox_entries_deleted": 1,
   "file_deleted": true,
-  "recipients": ["abc123@thvuinin.my.id"]
+  "recipients": ["abc123@pusat.email"]
 }
 ```
 
@@ -673,13 +679,13 @@ Frontend behavior:
 Connect:
 
 ```txt
-ws://localhost:3000/ws?email=abc123@thvuinin.my.id
+ws://localhost:3000/ws?email=abc123@pusat.email
 ```
 
 Jika API online memakai HTTPS, gunakan WSS:
 
 ```txt
-wss://api.example.com/ws?email=abc123@thvuinin.my.id
+wss://prod.pusat.email/ws?email=abc123@pusat.email
 ```
 
 Event message:
@@ -687,7 +693,7 @@ Event message:
 ```json
 {
   "type": "message",
-  "email": "abc123@thvuinin.my.id",
+  "email": "abc123@pusat.email",
   "message": {
     "id": "uuid",
     "from": "sender@example.com",

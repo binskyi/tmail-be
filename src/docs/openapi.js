@@ -7,6 +7,10 @@ export const openApiSpec = {
   },
   servers: [
     {
+      url: 'https://prod.pusat.email/api/v1',
+      description: 'Production API'
+    },
+    {
       url: '/api/v1',
       description: 'Current API host'
     }
@@ -54,7 +58,7 @@ export const openApiSpec = {
       PublicDomain: {
         type: 'object',
         properties: {
-          domain: { type: 'string', example: 'thvuinin.my.id' },
+          domain: { type: 'string', example: 'pusat.email' },
           visibility: { type: 'string', enum: ['public'], example: 'public' },
           created_at: { type: 'integer', format: 'int64', example: 0 },
           updated_at: { type: 'integer', format: 'int64', example: 0 },
@@ -148,8 +152,8 @@ export const openApiSpec = {
                 schema: {
                   type: 'object',
                   properties: {
-                    email: { type: 'string', example: 'abc123@thvuinin.my.id' },
-                    domain: { type: 'string', example: 'thvuinin.my.id' }
+                    email: { type: 'string', example: 'abc123@pusat.email' },
+                    domain: { type: 'string', example: 'pusat.email' }
                   }
                 }
               }
@@ -305,7 +309,7 @@ export const openApiSpec = {
                 example: {
                   domains: [
                     {
-                      domain: 'thvuinin.my.id',
+                      domain: 'pusat.email',
                       visibility: 'public',
                       created_at: 0,
                       updated_at: 0,
@@ -344,7 +348,7 @@ export const openApiSpec = {
                 example: {
                   domains: [
                     {
-                      domain: 'thvuinin.my.id',
+                      domain: 'pusat.email',
                       last_seen_at: 1779811148095,
                       total_messages: 8,
                       mx_valid: true,

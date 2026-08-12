@@ -5,8 +5,8 @@ Backend inbound-only untuk temporary email. Sistem menerima SMTP via Haraka, mem
 ## Fitur
 
 - SMTP inbound-only dengan Haraka.
-- Catch-all untuk `thvuinin.my.id` dan semua subdomainnya.
-- Custom domain tanpa registrasi, valid otomatis jika MX mengarah ke `mx.thvuinin.my.id`.
+- Catch-all untuk `pusat.email` dan semua subdomainnya.
+- Custom domain tanpa registrasi, valid otomatis jika MX mengarah ke `mail.pusat.email`.
 - Redis Stream queue untuk memisahkan SMTP accept path dari parsing/storage email.
 - Redis hot storage per inbox dengan TTL 86400 detik.
 - Spool raw email lokal di `spool/emails/YYYY-MM-DD/HH/*.eml`.
@@ -64,8 +64,8 @@ Endpoint `/admin` dan WebSocket `/ws` selalu bisa diakses tanpa whitelist supaya
 Cloudflare Tunnel bisa dipakai untuk Express API dan WebSocket saja:
 
 ```txt
-https://api.example.com -> http://127.0.0.1:3000
-wss://api.example.com/ws -> ws://127.0.0.1:3000/ws
+https://prod.pusat.email -> http://127.0.0.1:3000
+wss://prod.pusat.email/ws -> ws://127.0.0.1:3000/ws
 ```
 
 Redis tetap lokal, dan Haraka SMTP tetap harus menerima email lewat MX/port 25 langsung ke VPS. Jangan arahkan SMTP melalui Cloudflare Tunnel.
@@ -118,7 +118,7 @@ tunnel: tmail-api
 credentials-file: ./cloudflared/tmail-api.json
 
 ingress:
-  - hostname: api.thvuinin.my.id
+  - hostname: prod.pusat.email
     service: http://127.0.0.1:3000
   - service: http_status:404
 ```
@@ -126,9 +126,9 @@ ingress:
 DNS Cloudflare:
 
 ```txt
-api.thvuinin.my.id  -> tunnel route
-mx.thvuinin.my.id   -> A VPS_IP, DNS only
-thvuinin.my.id      -> MX 10 mx.thvuinin.my.id
+prod.pusat.email -> tunnel route
+mail.pusat.email -> A VPS_IP, DNS only
+pusat.email      -> MX 10 mail.pusat.email
 ```
 
 Pastikan Redis aktif:
@@ -349,8 +349,8 @@ NODE_ENV=production
 PORT=3000
 TRUST_PROXY=1
 
-BASE_DOMAIN=thvuinin.my.id
-REQUIRED_MX_HOST=mx.thvuinin.my.id
+BASE_DOMAIN=pusat.email
+REQUIRED_MX_HOST=mail.pusat.email
 
 REDIS_PASSWORD=ganti-password-kuat
 REDIS_URL=redis://:ganti-password-kuat@redis:6379
@@ -507,19 +507,21 @@ save_email
 Host MX custom domain harus mengarah ke:
 
 ```txt
-mx.thvuinin.my.id
+mail.pusat.email
 ```
 
 Contoh DNS:
 
 ```txt
-example.com.  MX 10 mx.thvuinin.my.id.
-*.example.com. MX 10 mx.thvuinin.my.id.
+example.com.  MX 10 mail.pusat.email.
+*.example.com. MX 10 mail.pusat.email.
 ```
 
 ## API
 
-Base URL: `/api/v1`
+Base URL production: `https://prod.pusat.email/api/v1`
+
+Base path lokal: `/api/v1`
 
 Semua endpoint di bawah juga tersedia di Swagger UI:
 
@@ -542,7 +544,7 @@ http://127.0.0.1:3000/api/v1/swagger
 Contoh URL online:
 
 ```txt
-https://api.example.com/api/v1/swagger
+https://prod.pusat.email/api/v1/swagger
 ```
 
 Endpoint admin memakai header:
@@ -576,7 +578,7 @@ GET /api/v1/generate?domain=example.com
 Response:
 
 ```json
-{ "email": "abc123@thvuinin.my.id", "domain": "thvuinin.my.id" }
+{ "email": "abc123@pusat.email", "domain": "pusat.email" }
 ```
 
 Kemungkinan error:
@@ -586,7 +588,7 @@ Kemungkinan error:
 #### Read Inbox
 
 ```http
-GET /api/v1/inbox?email=abc123@thvuinin.my.id
+GET /api/v1/inbox?email=abc123@pusat.email
 ```
 
 Membaca list message pendek dari Redis untuk satu inbox.
@@ -599,7 +601,7 @@ Response:
 
 ```json
 {
-  "email": "abc123@thvuinin.my.id",
+  "email": "abc123@pusat.email",
   "messages": [
     {
       "id": "d2fb0b7c-7a8d-4fb0-bc37-4e0f95f67d3b",
@@ -620,7 +622,7 @@ Kemungkinan error:
 #### Delete Inbox
 
 ```http
-DELETE /api/v1/inbox?email=abc123@thvuinin.my.id
+DELETE /api/v1/inbox?email=abc123@pusat.email
 X-Admin-Token: change-me-admin-token
 ```
 
@@ -636,7 +638,7 @@ Response:
 
 ```json
 {
-  "email": "abc123@thvuinin.my.id",
+  "email": "abc123@pusat.email",
   "messages_deleted": 2,
   "message_ids": [
     "d2fb0b7c-7a8d-4fb0-bc37-4e0f95f67d3b"
@@ -668,7 +670,7 @@ Response:
 {
   "id": "d2fb0b7c-7a8d-4fb0-bc37-4e0f95f67d3b",
   "from": "Service <no-reply@example.com>",
-  "to": ["abc123@thvuinin.my.id"],
+  "to": ["abc123@pusat.email"],
   "subject": "Your verification code",
   "text": "Use code 123456 to login.",
   "html": "",
@@ -716,7 +718,7 @@ Response:
   "deleted": true,
   "inbox_entries_deleted": 1,
   "file_deleted": true,
-  "recipients": ["abc123@thvuinin.my.id"]
+  "recipients": ["abc123@pusat.email"]
 }
 ```
 
@@ -780,7 +782,7 @@ Response:
 {
   "domains": [
     {
-      "domain": "thvuinin.my.id",
+      "domain": "pusat.email",
       "visibility": "public",
       "created_at": 0,
       "updated_at": 0,
@@ -804,7 +806,7 @@ Response:
 {
   "domains": [
     {
-      "domain": "thvuinin.my.id",
+      "domain": "pusat.email",
       "last_seen_at": 1779811148095,
       "total_messages": 8,
       "mx_valid": true,
@@ -837,7 +839,7 @@ Cek apakah domain aktif untuk inbound. Domain dianggap aktif jika salah satu kon
 
 - domain adalah `BASE_DOMAIN` atau subdomainnya
 - domain terdaftar aktif di admin registry
-- MX domain mengarah ke `mx.thvuinin.my.id`
+- MX domain mengarah ke `mail.pusat.email`
 
 Response:
 
@@ -856,9 +858,9 @@ Response:
   "built_in": false,
   "mx_valid": true,
   "mx_records": [
-    { "exchange": "mx.thvuinin.my.id", "priority": 10 }
+    { "exchange": "mail.pusat.email", "priority": 10 }
   ],
-  "required_mx": "mx.thvuinin.my.id",
+  "required_mx": "mail.pusat.email",
   "active_reason": "mx_points_to_required_host",
   "created_at": null,
   "updated_at": null
@@ -1054,7 +1056,7 @@ Content-Type: application/json
 `public` berarti domain tampil di `GET /api/v1/domains` dan bisa dipakai di `/generate?domain=...`.
 `private` berarti domain aktif untuk inbound, tetapi tidak ditampilkan ke user public dan tidak bisa dipilih untuk generate public.
 
-Secara default API tambah domain memverifikasi MX harus mengarah ke `mx.thvuinin.my.id`. Untuk development lokal bisa override:
+Secara default API tambah domain memverifikasi MX harus mengarah ke `mail.pusat.email`. Untuk development lokal bisa override:
 
 ```json
 {
@@ -1142,14 +1144,14 @@ Response:
 }
 ```
 
-Catatan: domain yang tidak diregistrasikan tetap bisa diterima otomatis jika MX domain tersebut mengarah ke `mx.thvuinin.my.id`. Registry domain admin dipakai untuk mengatur domain aktif public/private dan menu operasional.
+Catatan: domain yang tidak diregistrasikan tetap bisa diterima otomatis jika MX domain tersebut mengarah ke `mail.pusat.email`. Registry domain admin dipakai untuk mengatur domain aktif public/private dan menu operasional.
 
 ## WebSocket
 
 Connect ke:
 
 ```txt
-ws://localhost:3000/ws?email=abc123@thvuinin.my.id
+ws://localhost:3000/ws?email=abc123@pusat.email
 ```
 
 Saat email masuk, server mengirim event:
@@ -1157,7 +1159,7 @@ Saat email masuk, server mengirim event:
 ```json
 {
   "type": "message",
-  "email": "abc123@thvuinin.my.id",
+  "email": "abc123@pusat.email",
   "message": {
     "id": "uuid",
     "from": "sender@example.com",

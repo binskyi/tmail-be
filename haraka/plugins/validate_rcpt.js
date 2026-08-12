@@ -4,8 +4,8 @@ const Redis = require('ioredis');
 
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
-const baseDomain = String(process.env.BASE_DOMAIN || 'thvuinin.my.id').toLowerCase();
-const requiredMxHost = String(process.env.REQUIRED_MX_HOST || 'mx.thvuinin.my.id').toLowerCase();
+const baseDomain = String(process.env.BASE_DOMAIN || 'pusat.email').toLowerCase();
+const requiredMxHost = String(process.env.REQUIRED_MX_HOST || 'mail.pusat.email').toLowerCase();
 const redisUrl = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
 const redisPassword = process.env.REDIS_PASSWORD || 'd0535500cb173f97';
 const cacheTtlSeconds = Number.parseInt(process.env.DOMAIN_MX_CACHE_TTL_SECONDS || '300', 10);

@@ -16,7 +16,7 @@
  *   const { createOtpFilter } = require("./otp-filter");
  *   const otpFilter = createOtpFilter({ dbPath: "./otp-cache.sqlite" });
  *   const result = await otpFilter.filterEmail(emailObject);
- *   const resultFromUrl = await otpFilter.filterUrl("https://api.example.com/api/v1/messages/id");
+ *   const resultFromUrl = await otpFilter.filterUrl("https://prod.pusat.email/api/v1/messages/id");
  */
 
 const crypto = require("crypto");

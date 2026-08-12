@@ -2,6 +2,6 @@ tunnel: tmail-api
 credentials-file: ./cloudflared/tmail-api.json
 
 ingress:
-  - hostname: api.thvuinin.my.id
+  - hostname: prod.pusat.email
     service: http://127.0.0.1:3000
   - service: http_status:404
